@@ -57,6 +57,8 @@ python -m toss_alert                    # 계속 실행 (Ctrl+C로 종료)
 
 Windows에서 `python`이 안 되면 `py`로 바꿔서 실행하세요.
 
+Windows에는 시간대 데이터가 기본으로 없습니다. 기본값 `Asia/Seoul`은 그대로 동작하지만(한국은 서머타임이 없어 UTC+9로 처리), `timezone`을 다른 지역으로 바꾸려면 먼저 `pip install tzdata`를 실행하세요.
+
 ## 계속 켜 두기
 
 - **Windows 작업 스케줄러:** "로그온할 때" 트리거로 `python -m toss_alert`(시작 위치: 이 폴더)를 등록합니다. 또는 1분마다 `python -m toss_alert --once`를 실행하게 해도 됩니다.
