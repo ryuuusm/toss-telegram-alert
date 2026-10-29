@@ -3,19 +3,20 @@ import json
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 
-from toss_alert.config import ConfigError, HoldingRule, WatchRule, load_config, load_dotenv, load_secrets
+import toss_alert.config as config_mod
+from toss_alert.config import (KST, ConfigError, HoldingRule, WatchRule, load_config, load_dotenv,
+                               load_secrets, resolve_timezone)
 from toss_alert.rules import evaluate_holdings, evaluate_watch, market_of
 from toss_alert.runner import run_once
 from toss_alert.state import AlertState
 from toss_alert.telegram import TelegramNotifier
 from toss_alert.toss import Holding, Quote, TossClient
 
-KST = ZoneInfo("Asia/Seoul")
-EXAMPLE = Path(__file__).resolve().parent.parent / "config.example.toml"
+EXAMPLE =Path(__file__).resolve().parent.parent / "config.example.toml"
 
 
 def H(sym, last, avg, qty=1, cur="KRW", name="X"):
@@ -121,6 +122,17 @@ def test_market_hours_cross_midnight(tmp_path):
     assert not cfg.market_open("US", sun_early)
     assert cfg.market_open("KR", datetime(2026, 10, 29, 9, 0, tzinfo=KST))
     assert not cfg.market_open("KR", datetime(2026, 10, 31, 9, 0, tzinfo=KST))   # Saturday
+
+
+def test_timezone_fallback_without_tz_database(monkeypatch):
+    """Windows without `tzdata`: Asia/Seoul still works (fixed UTC+9), others give a clear hint."""
+    def missing(name):
+        raise ZoneInfoNotFoundError(name)
+    monkeypatch.setattr(config_mod, "ZoneInfo", missing)
+    assert resolve_timezone("Asia/Seoul") is KST
+    with pytest.raises(ConfigError) as ei:
+        resolve_timezone("America/New_York")
+    assert "tzdata" in str(ei.value)
 
 
 def test_dotenv_and_secret_validation(tmp_path, monkeypatch):
