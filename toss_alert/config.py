@@ -7,11 +7,15 @@ import stat
 import sys
 import tomllib
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone, tzinfo
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+# Korea has no daylight saving time, so a fixed UTC+9 is exact for Asia/Seoul. Used when the
+# OS has no IANA time zone database (Windows without the `tzdata` package).
+KST = timezone(timedelta(hours=9), "KST")
 
 from .toss import validate_symbol
 
@@ -118,7 +122,7 @@ class HoldingRule:
 class Config:
     interval_seconds: int
     cooldown_minutes: int
-    timezone: ZoneInfo
+    timezone: tzinfo
     weekdays_only: bool
     hours: Dict[str, List[Window]]                 # market ("KR"/"US") -> windows
     holdings_enabled: bool
@@ -130,6 +134,19 @@ class Config:
 
     def market_open(self, market: str, now: datetime) -> bool:
         return any(w.contains(now, self.weekdays_only) for w in self.hours.get(market, []))
+
+
+def resolve_timezone(name: str) -> tzinfo:
+    """IANA zone via zoneinfo; Asia/Seoul falls back to fixed UTC+9 when no tz database exists."""
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        if name == "Asia/Seoul":
+            return KST
+        raise ConfigError(f"시간대 '{name}'를 찾을 수 없습니다. Windows라면 'pip install tzdata'로 "
+                          "시간대 데이터를 설치하세요") from None
+    except ValueError as exc:
+        raise ConfigError("general.timezone이 올바르지 않습니다 (예: Asia/Seoul)") from exc
 
 
 def _dec(value: Any, where: str, *, positive: bool = False) -> Optional[Decimal]:
@@ -194,10 +211,7 @@ def load_config(path: Path) -> Config:
     cooldown = g.get("cooldown_minutes", 60)
     if not isinstance(cooldown, int) or isinstance(cooldown, bool) or not 1 <= cooldown <= 10080:
         raise ConfigError("general.cooldown_minutes는 1~10080 정수여야 합니다")
-    try:
-        tz = ZoneInfo(str(g.get("timezone", "Asia/Seoul")))
-    except Exception as exc:  # ZoneInfoNotFoundError / ValueError
-        raise ConfigError("general.timezone이 올바르지 않습니다 (예: Asia/Seoul)") from exc
+    tz = resolve_timezone(str(g.get("timezone", "Asia/Seoul")))
     hours_raw = raw.get("hours", {"KR": ["08:00-20:00"]})
     if not isinstance(hours_raw, dict):
         raise ConfigError("[hours]는 KR/US 키를 가진 표여야 합니다")
