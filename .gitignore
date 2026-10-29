@@ -1,0 +1,11 @@
+# Secrets and personal data: never commit
+.env
+config.toml
+alert_state.json
+*.lock
+.state-*
+
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
